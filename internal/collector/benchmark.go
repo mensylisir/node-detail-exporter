@@ -16,6 +16,24 @@ var (
 			Help: "Benchmark result: 99th percentile of single-thread fsync latency.",
 		},
 	)
+	benchmarkCPUEventsPerSecond = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "node_benchmark_cpu_events_per_second",
+			Help: "Benchmark result: CPU events per second.",
+		},
+	)
+	benchmarkMemoryOpsPerSecond = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "node_benchmark_memory_ops_per_second",
+			Help: "Benchmark result: Memory operations per second.",
+		},
+	)
+	benchmarkNetBandwidthBitsPerSecond = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "node_benchmark_net_bandwidth_bits_per_second",
+			Help: "Benchmark result: Network bandwidth in bits per second.",
+		},
+	)
 )
 
 type BenchmarkCollector struct {
@@ -45,8 +63,23 @@ func (c *BenchmarkCollector) Update(ch chan<- prometheus.Metric) error {
 			benchmarkFsyncP99.Set(p99)
 			log.Printf("Benchmark fsync_p99_seconds loaded: %f", p99)
 		}
+		if cpu, ok := benchmarks["cpu_events_per_second"]; ok {
+			benchmarkCPUEventsPerSecond.Set(cpu)
+			log.Printf("Benchmark cpu_events_per_second loaded: %f", cpu)
+		}
+		if mem, ok := benchmarks["memory_ops_per_second"]; ok {
+			benchmarkMemoryOpsPerSecond.Set(mem)
+			log.Printf("Benchmark memory_ops_per_second loaded: %f", mem)
+		}
+		if net, ok := benchmarks["net_bandwidth_bits_per_second"]; ok {
+			benchmarkNetBandwidthBitsPerSecond.Set(net)
+			log.Printf("Benchmark net_bandwidth_bits_per_second loaded: %f", net)
+		}
 	})
 
 	benchmarkFsyncP99.Collect(ch)
+	benchmarkCPUEventsPerSecond.Collect(ch)
+	benchmarkMemoryOpsPerSecond.Collect(ch)
+	benchmarkNetBandwidthBitsPerSecond.Collect(ch)
 	return nil
 }
