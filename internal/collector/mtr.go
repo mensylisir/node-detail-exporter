@@ -2,7 +2,6 @@ package collector
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"log"
 	"os/exec"
 	"strconv"
@@ -102,21 +101,11 @@ func (c *MtrCollector) Update(ch chan<- prometheus.Metric) error {
 func (c *MtrCollector) collectMtrMetrics(target string) error {
 	// -j for json output, -c 5 for 5 packets
 	cmd := exec.Command("mtr", "-j", "-c", "5", target)
-	stdout, err := cmd.StdoutPipe()
+	data, err := cmd.Output()
 	if err != nil {
-		return err
-	}
-
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-
-	data, err := ioutil.ReadAll(stdout)
-	if err != nil {
-		return err
-	}
-
-	if err := cmd.Wait(); err != nil {
+		if ee, ok := err.(*exec.ExitError); ok {
+			log.Printf("mtr for target %s failed with stderr: %s", target, string(ee.Stderr))
+		}
 		return err
 	}
 
