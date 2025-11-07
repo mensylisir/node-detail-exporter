@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"node-prober/internal/parser"
 )
 
 var (
@@ -53,7 +54,7 @@ func (c *IostatCollector) Update(ch chan<- prometheus.Metric) error {
 	iostatWriteAwait.Reset()
 	iostatUtilPercent.Reset()
 
-	collectFromCommand("iostat", []string{"-x", "-d", "1", "1"}, parseIostat)
+	parser.CollectFromCommand("iostat", []string{"-x", "-d", "1", "1"}, parseIostat)
 
 	iostatAwait.Collect(ch)
 	iostatReadAwait.Collect(ch)

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"io"
 	"log"
-	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -69,19 +68,19 @@ func (c *PidstatCollector) Update(ch chan<- prometheus.Metric) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		collectFromCommand("pidstat", []string{"-u", "1", "1"}, parsePidstatCPU)
+		parser.CollectFromCommand("pidstat", []string{"-u", "1", "1"}, parsePidstatCPU)
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		collectFromCommand("pidstat", []string{"-d", "1", "1"}, parsePidstatIO)
+		parser.CollectFromCommand("pidstat", []string{"-d", "1", "1"}, parsePidstatIO)
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		collectFromCommand("pidstat", []string{"-w", "1", "1"}, parsePidstatContextSwitches)
+		parser.CollectFromCommand("pidstat", []string{"-w", "1", "1"}, parsePidstatContextSwitches)
 	}()
 
 	wg.Wait()
@@ -93,24 +92,6 @@ func (c *PidstatCollector) Update(ch chan<- prometheus.Metric) error {
 	processContextSwitchesNonVoluntary.Collect(ch)
 
 	return nil
-}
-
-func collectFromCommand(command string, args []string, parser func(io.Reader)) {
-	cmd := exec.Command(command, args...)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		log.Printf("Error creating stdout pipe for %s: %v", command, err)
-		return
-	}
-
-	if err := cmd.Start(); err != nil {
-		log.Printf("Error starting %s: %v", command, err)
-		return
-	}
-
-	parser(stdout)
-
-	cmd.Wait()
 }
 
 func parsePidstatCPU(stdout io.Reader) {

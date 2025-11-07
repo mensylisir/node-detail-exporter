@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"node-prober/internal/parser"
 )
 
 var (
@@ -44,7 +45,7 @@ func NewVmstatCollector() (Collector, error) {
 }
 
 func (c *VmstatCollector) Update(ch chan<- prometheus.Metric) error {
-	collectFromCommand("vmstat", []string{"-n", "1", "2"}, parseVmstat)
+	parser.CollectFromCommand("vmstat", []string{"-n", "1", "2"}, parseVmstat)
 
 	ch <- vmstatProcsRunning
 	ch <- vmstatProcsBlocked
