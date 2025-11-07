@@ -22,6 +22,10 @@ type Config struct {
 			Enabled bool   `yaml:"enabled"`
 			LogPath string `yaml:"log_path"`
 		} `yaml:"audit"`
+		Mtr struct {
+			Enabled bool     `yaml:"enabled"`
+			Targets []string `yaml:"targets"`
+		} `yaml:"mtr"`
 	} `yaml:"collectors"`
 }
 

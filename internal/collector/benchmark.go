@@ -50,7 +50,3 @@ func (c *BenchmarkCollector) Update(ch chan<- prometheus.Metric) error {
 	benchmarkFsyncP99.Collect(ch)
 	return nil
 }
-
-func init() {
-	registerCollector("benchmark", NewBenchmarkCollector)
-}

@@ -12,3 +12,8 @@ collectors:
   audit:
     enabled: true
     log_path: "/var/log/kubernetes/api-audit.log"
+  mtr:
+    enabled: true
+    targets:
+      - "localhost"
+      - "127.0.0.1"

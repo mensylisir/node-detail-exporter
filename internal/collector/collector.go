@@ -1,7 +1,6 @@
 package collector
 
 import (
-	"fmt"
 	"log"
 	"sync"
 
@@ -76,26 +75,4 @@ func (r *Registry) Collect(ch chan<- prometheus.Metric) {
 	for _, metric := range r.metrics {
 		ch <- metric
 	}
-}
-
-var (
-	factories = make(map[string]func() (Collector, error))
-)
-
-func registerCollector(name string, factory func() (Collector, error)) {
-	factories[name] = factory
-}
-
-func GetCollector(name string) (Collector, error) {
-	factory, ok := factories[name]
-	if !ok {
-		return nil, fmt.Errorf("collector %s not found", name)
-	}
-	return factory()
-}
-
-func init() {
-	registerCollector("pidstat", NewPidstatCollector)
-	registerCollector("iostat", NewIostatCollector)
-	registerCollector("vmstat", NewVmstatCollector)
 }
