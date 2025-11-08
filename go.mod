@@ -3,6 +3,7 @@ module node-prober
 go 1.24.3
 
 require (
+	github.com/go-ping/ping v1.2.0
 	github.com/hpcloud/tail v1.0.0
 	github.com/prometheus/client_golang v1.23.2
 	gopkg.in/yaml.v2 v2.4.0
@@ -12,7 +13,6 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/go-ping/ping v1.2.0 // indirect
 	github.com/google/uuid v1.2.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
