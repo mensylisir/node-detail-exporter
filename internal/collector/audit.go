@@ -37,7 +37,7 @@ func NewAuditCollector(logPath string) (Collector, error) {
 	return &AuditCollector{LogPath: logPath}, nil
 }
 
-func (c *AuditCollector) Update(ch chan<- prometheus.Metric) error {
+func (c *AuditCollector) Update(ch chan<- prometheus.Metric, interval time.Duration) error {
 	c.once.Do(func() {
 		go c.tailLog()
 	})

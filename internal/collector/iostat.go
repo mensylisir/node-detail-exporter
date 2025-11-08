@@ -1,14 +1,12 @@
 package collector
 
 import (
-	"bufio"
-	"io"
 	"log"
-	"strconv"
-	"strings"
+	"sync"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"node-prober/internal/parser"
+	"github.com/shirou/gopsutil/disk"
 )
 
 var (
@@ -42,19 +40,62 @@ var (
 	)
 )
 
-type IostatCollector struct{}
-
-func NewIostatCollector() (Collector, error) {
-	return &IostatCollector{}, nil
+type IostatCollector struct {
+	prevIOCounters map[string]disk.IOCountersStat
+	mu             sync.Mutex
 }
 
-func (c *IostatCollector) Update(ch chan<- prometheus.Metric) error {
+func NewIostatCollector() (Collector, error) {
+	return &IostatCollector{
+		prevIOCounters: make(map[string]disk.IOCountersStat),
+	}, nil
+}
+
+func (c *IostatCollector) Update(ch chan<- prometheus.Metric, interval time.Duration) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	iostatAwait.Reset()
 	iostatReadAwait.Reset()
 	iostatWriteAwait.Reset()
 	iostatUtilPercent.Reset()
 
-	parser.CollectFromCommand("iostat", []string{"-x", "-d", "1", "1"}, parseIostat)
+	ioCounters, err := disk.IOCounters()
+	if err != nil {
+		log.Printf("Error getting disk IO counters: %v", err)
+		return err
+	}
+
+	for device, counter := range ioCounters {
+		if prevCounter, ok := c.prevIOCounters[device]; ok {
+			readTimeDelta := counter.ReadTime - prevCounter.ReadTime
+			writeTimeDelta := counter.WriteTime - prevCounter.WriteTime
+			readCountDelta := counter.ReadCount - prevCounter.ReadCount
+			writeCountDelta := counter.WriteCount - prevCounter.WriteCount
+			ioTimeDelta := counter.IoTime - prevCounter.IoTime
+
+			var rAwait, wAwait, await, util float64
+			if readCountDelta > 0 {
+				rAwait = float64(readTimeDelta) / float64(readCountDelta)
+			}
+			if writeCountDelta > 0 {
+				wAwait = float64(writeTimeDelta) / float64(writeCountDelta)
+			}
+			if readCountDelta+writeCountDelta > 0 {
+				await = float64(readTimeDelta+writeTimeDelta) / float64(readCountDelta+writeCountDelta)
+			}
+			if interval.Milliseconds() > 0 {
+				util = float64(ioTimeDelta) / float64(interval.Milliseconds()) * 100
+			}
+
+			iostatReadAwait.WithLabelValues(device).Set(rAwait)
+			iostatWriteAwait.WithLabelValues(device).Set(wAwait)
+			iostatAwait.WithLabelValues(device).Set(await)
+			iostatUtilPercent.WithLabelValues(device).Set(util)
+		}
+	}
+
+	c.prevIOCounters = ioCounters
 
 	iostatAwait.Collect(ch)
 	iostatReadAwait.Collect(ch)
@@ -62,50 +103,4 @@ func (c *IostatCollector) Update(ch chan<- prometheus.Metric) error {
 	iostatUtilPercent.Collect(ch)
 
 	return nil
-}
-
-func parseIostat(stdout io.Reader) {
-	scanner := bufio.NewScanner(stdout)
-	headerFound := false
-	for scanner.Scan() {
-		line := scanner.Text()
-		if !headerFound {
-			if strings.HasPrefix(line, "Device") {
-				headerFound = true
-			}
-			continue
-		}
-
-		fields := strings.Fields(line)
-		if len(fields) < 14 {
-			continue
-		}
-
-		device := fields[0]
-		rAwait, err := strconv.ParseFloat(fields[10], 64)
-		if err != nil {
-			log.Printf("Error parsing r_await in iostat for device %s: %v", device, err)
-			continue
-		}
-		wAwait, err := strconv.ParseFloat(fields[11], 64)
-		if err != nil {
-			log.Printf("Error parsing w_await in iostat for device %s: %v", device, err)
-			continue
-		}
-		await, err := strconv.ParseFloat(fields[12], 64)
-		if err != nil {
-			log.Printf("Error parsing await in iostat for device %s: %v", device, err)
-			continue
-		}
-		util, err := strconv.ParseFloat(fields[13], 64)
-		if err != nil {
-			log.Printf("Error parsing %%util in iostat for device %s: %v", device, err)
-			continue
-		}
-
-		iostatReadAwait.WithLabelValues(device).Set(rAwait)
-		iostatWriteAwait.WithLabelValues(device).Set(wAwait)
-		iostatAwait.WithLabelValues(device).Set(await)
-		iostatUtilPercent.WithLabelValues(device).Set(util)
-	}
 }

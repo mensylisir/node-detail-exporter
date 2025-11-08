@@ -3,6 +3,7 @@ package collector
 import (
 	"log"
 	"sync"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -11,7 +12,7 @@ import (
 type Collector interface {
 	// Update fetches the data from the source and updates the Prometheus metrics.
 	// It is called periodically in a background goroutine.
-	Update(ch chan<- prometheus.Metric) error
+	Update(ch chan<- prometheus.Metric, interval time.Duration) error
 }
 
 // Registry manages a set of collectors.
@@ -36,7 +37,7 @@ func (r *Registry) Register(name string, collector Collector) {
 }
 
 // UpdateAll updates all registered collectors.
-func (r *Registry) UpdateAll() {
+func (r *Registry) UpdateAll(interval time.Duration) {
 	var wg sync.WaitGroup
 	ch := make(chan prometheus.Metric)
 
@@ -44,7 +45,7 @@ func (r *Registry) UpdateAll() {
 		wg.Add(1)
 		go func(name string, c Collector) {
 			defer wg.Done()
-			if err := c.Update(ch); err != nil {
+			if err := c.Update(ch, interval); err != nil {
 				log.Printf("Error updating collector %s: %v", name, err)
 			}
 		}(name, c)

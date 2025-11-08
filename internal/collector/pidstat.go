@@ -1,15 +1,13 @@
 package collector
 
 import (
-	"bufio"
-	"io"
 	"log"
 	"strconv"
-	"strings"
 	"sync"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"node-prober/internal/parser"
+	"github.com/shirou/gopsutil/process"
 )
 
 var (
@@ -50,40 +48,50 @@ var (
 	)
 )
 
-type PidstatCollector struct{}
-
-func NewPidstatCollector() (Collector, error) {
-	return &PidstatCollector{}, nil
+type PidstatCollector struct {
+	previousProcs map[int32]*process.IOCountersStat
+	previousCtx   map[int32]*process.NumCtxSwitchesStat
+	mu            sync.Mutex
 }
 
-func (c *PidstatCollector) Update(ch chan<- prometheus.Metric) error {
+func NewPidstatCollector() (Collector, error) {
+	return &PidstatCollector{
+		previousProcs: make(map[int32]*process.IOCountersStat),
+		previousCtx:   make(map[int32]*process.NumCtxSwitchesStat),
+	}, nil
+}
+
+func (c *PidstatCollector) Update(ch chan<- prometheus.Metric, interval time.Duration) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	processCPUUsage.Reset()
 	processIOWrite.Reset()
 	processIORead.Reset()
 	processContextSwitchesVoluntary.Reset()
 	processContextSwitchesNonVoluntary.Reset()
 
+	processes, err := process.Processes()
+	if err != nil {
+		log.Printf("Error getting processes: %v", err)
+		return err
+	}
+
+	currentProcs := make(map[int32]*process.IOCountersStat)
+	currentCtx := make(map[int32]*process.NumCtxSwitchesStat)
+
 	var wg sync.WaitGroup
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		parser.CollectFromCommand("pidstat", []string{"-u", "1", "1"}, parsePidstatCPU)
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		parser.CollectFromCommand("pidstat", []string{"-d", "1", "1"}, parsePidstatIO)
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		parser.CollectFromCommand("pidstat", []string{"-w", "1", "1"}, parsePidstatContextSwitches)
-	}()
-
+	for _, p := range processes {
+		wg.Add(1)
+		go func(p *process.Process) {
+			defer wg.Done()
+			c.collectProcessMetrics(p, interval, currentProcs, currentCtx)
+		}(p)
+	}
 	wg.Wait()
+
+	c.previousProcs = currentProcs
+	c.previousCtx = currentCtx
 
 	processCPUUsage.Collect(ch)
 	processIOWrite.Collect(ch)
@@ -94,83 +102,46 @@ func (c *PidstatCollector) Update(ch chan<- prometheus.Metric) error {
 	return nil
 }
 
-func parsePidstatCPU(stdout io.Reader) {
-	scanner := bufio.NewScanner(stdout)
-	for scanner.Scan() {
-		line := scanner.Text()
-		fields := strings.Fields(line)
-
-		if len(fields) < 8 || fields[0] == "#" || !parser.IsNumeric(fields[2]) {
-			continue
-		}
-
-		pid := fields[2]
-		user := fields[1]
-		cpu, err := strconv.ParseFloat(fields[7], 64)
-		if err != nil {
-			log.Printf("Error parsing CPU value in pidstat: %v", err)
-			continue
-		}
-		command := fields[len(fields)-1]
-
-		processCPUUsage.WithLabelValues(pid, user, command).Set(cpu)
+func (c *PidstatCollector) collectProcessMetrics(p *process.Process, interval time.Duration,
+	currentProcs map[int32]*process.IOCountersStat, currentCtx map[int32]*process.NumCtxSwitchesStat) {
+	pid := p.Pid
+	user, err := p.Username()
+	if err != nil {
+		return
 	}
-}
-
-func parsePidstatIO(stdout io.Reader) {
-	scanner := bufio.NewScanner(stdout)
-	for scanner.Scan() {
-		line := scanner.Text()
-		fields := strings.Fields(line)
-
-		if len(fields) < 6 || fields[0] == "#" || !parser.IsNumeric(fields[2]) {
-			continue
-		}
-
-		pid := fields[2]
-		user := fields[1]
-		readKB, err := strconv.ParseFloat(fields[3], 64)
-		if err != nil {
-			log.Printf("Error parsing readKB value in pidstat: %v", err)
-			continue
-		}
-		writeKB, err := strconv.ParseFloat(fields[4], 64)
-		if err != nil {
-			log.Printf("Error parsing writeKB value in pidstat: %v", err)
-			continue
-		}
-		command := fields[len(fields)-1]
-
-		processIORead.WithLabelValues(pid, user, command).Set(readKB)
-		processIOWrite.WithLabelValues(pid, user, command).Set(writeKB)
+	command, err := p.Name()
+	if err != nil {
+		return
 	}
-}
+	pidStr := strconv.Itoa(int(pid))
 
-func parsePidstatContextSwitches(stdout io.Reader) {
-	scanner := bufio.NewScanner(stdout)
-	for scanner.Scan() {
-		line := scanner.Text()
-		fields := strings.Fields(line)
+	// CPU Usage
+	cpu, err := p.CPUPercent()
+	if err == nil {
+		processCPUUsage.WithLabelValues(pidStr, user, command).Set(cpu)
+	}
 
-		if len(fields) < 6 || fields[0] == "#" || !parser.IsNumeric(fields[2]) {
-			continue
+	// IO Counters
+	io, err := p.IOCounters()
+	if err == nil {
+		if prevIO, ok := c.previousProcs[pid]; ok {
+			readRate := float64(io.ReadBytes-prevIO.ReadBytes) / interval.Seconds() / 1024
+			writeRate := float64(io.WriteBytes-prevIO.WriteBytes) / interval.Seconds() / 1024
+			processIORead.WithLabelValues(pidStr, user, command).Set(readRate)
+			processIOWrite.WithLabelValues(pidStr, user, command).Set(writeRate)
 		}
+		currentProcs[pid] = io
+	}
 
-		pid := fields[2]
-		user := fields[1]
-		voluntary, err := strconv.ParseFloat(fields[3], 64)
-		if err != nil {
-			log.Printf("Error parsing voluntary context switches in pidstat: %v", err)
-			continue
+	// Context Switches
+	ctx, err := p.NumCtxSwitches()
+	if err == nil {
+		if prevCtx, ok := c.previousCtx[pid]; ok {
+			voluntaryRate := float64(ctx.Voluntary-prevCtx.Voluntary) / interval.Seconds()
+			involuntaryRate := float64(ctx.Involuntary-prevCtx.Involuntary) / interval.Seconds()
+			processContextSwitchesVoluntary.WithLabelValues(pidStr, user, command).Set(voluntaryRate)
+			processContextSwitchesNonVoluntary.WithLabelValues(pidStr, user, command).Set(involuntaryRate)
 		}
-		nonVoluntary, err := strconv.ParseFloat(fields[4], 64)
-		if err != nil {
-			log.Printf("Error parsing non-voluntary context switches in pidstat: %v", err)
-			continue
-		}
-		command := fields[len(fields)-1]
-
-		processContextSwitchesVoluntary.WithLabelValues(pid, user, command).Set(voluntary)
-		processContextSwitchesNonVoluntary.WithLabelValues(pid, user, command).Set(nonVoluntary)
+		currentCtx[pid] = ctx
 	}
 }

@@ -1,51 +1,96 @@
 package collector
 
 import (
-	"bufio"
-	"io"
 	"log"
-	"strconv"
-	"strings"
+	"sync"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"node-prober/internal/parser"
+	"github.com/shirou/gopsutil/cpu"
+	"github.com/shirou/gopsutil/process"
 )
 
 var (
 	vmstatProcsRunning = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "node_vmstat_procs_running",
-			Help: "Number of running processes (procs r from vmstat).",
+			Help: "Number of running processes.",
 		},
 	)
 	vmstatProcsBlocked = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "node_vmstat_procs_blocked",
-			Help: "Number of blocked processes (procs b from vmstat).",
+			Help: "Number of blocked processes.",
 		},
 	)
 	vmstatCPUStealPercent = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "node_vmstat_cpu_steal_percent",
-			Help: "Stolen time from a virtual machine (cpu st from vmstat).",
+			Help: "Stolen time from a virtual machine.",
 		},
 	)
 	vmstatIOWaitPercent = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "node_vmstat_io_wait_percent",
-			Help: "Time spent waiting for I/O (cpu wa from vmstat).",
+			Help: "Time spent waiting for I/O.",
 		},
 	)
 )
 
-type VmstatCollector struct{}
+type VmstatCollector struct {
+	prevCPUTimes *cpu.TimesStat
+	mu           sync.Mutex
+}
 
 func NewVmstatCollector() (Collector, error) {
 	return &VmstatCollector{}, nil
 }
 
-func (c *VmstatCollector) Update(ch chan<- prometheus.Metric) error {
-	parser.CollectFromCommand("vmstat", []string{"-n", "1", "2"}, parseVmstat)
+func (c *VmstatCollector) Update(ch chan<- prometheus.Metric, interval time.Duration) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// CPU metrics
+	cpuTimes, err := cpu.Times(false)
+	if err != nil {
+		log.Printf("Error getting cpu times: %v", err)
+	} else if len(cpuTimes) > 0 {
+		if c.prevCPUTimes != nil {
+			totalDelta := cpuTimes[0].Total() - c.prevCPUTimes.Total()
+			if totalDelta > 0 {
+				stealPercent := (cpuTimes[0].Steal - c.prevCPUTimes.Steal) / totalDelta * 100
+				iowaitPercent := (cpuTimes[0].Iowait - c.prevCPUTimes.Iowait) / totalDelta * 100
+				vmstatCPUStealPercent.Set(stealPercent)
+				vmstatIOWaitPercent.Set(iowaitPercent)
+			}
+		}
+		c.prevCPUTimes = &cpuTimes[0]
+	}
+
+	// Process metrics
+	processes, err := process.Processes()
+	if err != nil {
+		log.Printf("Error getting processes: %v", err)
+	} else {
+		var running, blocked int64
+		for _, p := range processes {
+			status, err := p.Status()
+			if err != nil {
+				continue
+			}
+			s := status
+			if len(s) > 0 {
+				switch s[0] {
+				case 'R':
+					running++
+				case 'S', 'D', 'T':
+					blocked++
+				}
+			}
+		}
+		vmstatProcsRunning.Set(float64(running))
+		vmstatProcsBlocked.Set(float64(blocked))
+	}
 
 	ch <- vmstatProcsRunning
 	ch <- vmstatProcsBlocked
@@ -53,51 +98,4 @@ func (c *VmstatCollector) Update(ch chan<- prometheus.Metric) error {
 	ch <- vmstatIOWaitPercent
 
 	return nil
-}
-
-func parseVmstat(stdout io.Reader) {
-	scanner := bufio.NewScanner(stdout)
-	lineCount := 0
-	dataLine := ""
-	for scanner.Scan() {
-		line := scanner.Text()
-		lineCount++
-		if lineCount == 3 {
-			dataLine = line
-			break
-		}
-	}
-
-	if dataLine == "" {
-		log.Println("Could not find vmstat data line")
-		return
-	}
-
-	fields := strings.Fields(dataLine)
-	if len(fields) < 17 {
-		log.Printf("Unexpected number of fields in vmstat output: got %d, want >= 17", len(fields))
-		return
-	}
-
-	r, err := strconv.ParseFloat(fields[0], 64)
-	if err != nil {
-		log.Printf("Error parsing running procs in vmstat: %v", err)
-	}
-	b, err := strconv.ParseFloat(fields[1], 64)
-	if err != nil {
-		log.Printf("Error parsing blocked procs in vmstat: %v", err)
-	}
-	wa, err := strconv.ParseFloat(fields[16], 64)
-	if err != nil {
-		log.Printf("Error parsing io wait in vmstat: %v", err)
-	}
-	st, err := strconv.ParseFloat(fields[17], 64)
-	if err != nil {
-		log.Printf("Error parsing steal time in vmstat: %v", err)
-	}
-
-	vmstatProcsRunning.Set(r)
-	vmstatProcsBlocked.Set(b)
-	vmstatIOWaitPercent.Set(wa)
-	vmstatCPUStealPercent.Set(st)
 }

@@ -5,6 +5,7 @@ import (
 	"log"
 	"os/exec"
 	"strconv"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -48,6 +49,8 @@ var (
 )
 
 // MtrCollector collects metrics from mtr.
+// NOTE: This collector still uses exec.Command because a suitable native Go
+// library with the required raw data could not be found.
 type MtrCollector struct {
 	Targets []string
 }
@@ -75,7 +78,7 @@ func NewMtrCollector(targets []string) (Collector, error) {
 }
 
 // Update implements the Collector interface.
-func (c *MtrCollector) Update(ch chan<- prometheus.Metric) error {
+func (c *MtrCollector) Update(ch chan<- prometheus.Metric, interval time.Duration) error {
 	mtrHopLoss.Reset()
 	mtrHopLatencyAvg.Reset()
 	mtrHopLatencyBest.Reset()

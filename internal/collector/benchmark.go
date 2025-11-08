@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -44,7 +45,7 @@ func NewBenchmarkCollector() (Collector, error) {
 	return &BenchmarkCollector{}, nil
 }
 
-func (c *BenchmarkCollector) Update(ch chan<- prometheus.Metric) error {
+func (c *BenchmarkCollector) Update(ch chan<- prometheus.Metric, interval time.Duration) error {
 	c.Do(func() {
 		log.Println("Loading benchmark data...")
 		data, err := ioutil.ReadFile("configs/benchmarks.json")

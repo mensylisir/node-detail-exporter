@@ -54,7 +54,7 @@ func NewPingCollector(targets []string) (Collector, error) {
 	return &PingCollector{Targets: targets}, nil
 }
 
-func (c *PingCollector) Update(ch chan<- prometheus.Metric) error {
+func (c *PingCollector) Update(ch chan<- prometheus.Metric, interval time.Duration) error {
 	for _, target := range c.Targets {
 		executePing(target)
 	}
