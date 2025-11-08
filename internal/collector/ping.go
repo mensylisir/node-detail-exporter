@@ -1,14 +1,10 @@
 package collector
 
 import (
-	"bufio"
-	"io"
 	"log"
-	"os/exec"
-	"regexp"
-	"strconv"
-	"strings"
+	"time"
 
+	"github.com/go-ping/ping"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -60,7 +56,7 @@ func NewPingCollector(targets []string) (Collector, error) {
 
 func (c *PingCollector) Update(ch chan<- prometheus.Metric) error {
 	for _, target := range c.Targets {
-		ping(target)
+		executePing(target)
 	}
 
 	pingLatencyMin.Collect(ch)
@@ -72,51 +68,27 @@ func (c *PingCollector) Update(ch chan<- prometheus.Metric) error {
 	return nil
 }
 
-func ping(target string) {
-	cmd := exec.Command("ping", "-c", "5", "-W", "1", target)
-	stdout, err := cmd.StdoutPipe()
+func executePing(target string) {
+	pinger, err := ping.NewPinger(target)
 	if err != nil {
-		log.Printf("Error creating stdout pipe for ping: %v", err)
+		log.Printf("Error creating pinger for target %s: %v", target, err)
 		return
 	}
 
-	if err := cmd.Start(); err != nil {
-		log.Printf("Error starting ping: %v", err)
+	pinger.Count = 5
+	pinger.Timeout = time.Second * 1
+	pinger.SetPrivileged(true)
+
+	err = pinger.Run()
+	if err != nil {
+		log.Printf("Error running ping for target %s: %v", target, err)
 		return
 	}
 
-	parsePing(stdout, target)
-
-	cmd.Wait()
-}
-
-func parsePing(stdout io.Reader, target string) {
-	scanner := bufio.NewScanner(stdout)
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		if strings.Contains(line, "packet loss") {
-			re := regexp.MustCompile(`(\d+)% packet loss`)
-			matches := re.FindStringSubmatch(line)
-			if len(matches) > 1 {
-				loss, _ := strconv.ParseFloat(matches[1], 64)
-				pingPacketLoss.WithLabelValues(target).Set(loss)
-			}
-		}
-
-		if strings.Contains(line, "rtt min/avg/max/mdev") {
-			re := regexp.MustCompile(`= ([\d.]+)/([\d.]+)/([\d.]+)/([\d.]+) ms`)
-			matches := re.FindStringSubmatch(line)
-			if len(matches) > 4 {
-				min, _ := strconv.ParseFloat(matches[1], 64)
-				avg, _ := strconv.ParseFloat(matches[2], 64)
-				max, _ := strconv.ParseFloat(matches[3], 64)
-				stddev, _ := strconv.ParseFloat(matches[4], 64)
-				pingLatencyMin.WithLabelValues(target).Set(min / 1000)
-				pingLatencyAvg.WithLabelValues(target).Set(avg / 1000)
-				pingLatencyMax.WithLabelValues(target).Set(max / 1000)
-				pingLatencyStddev.WithLabelValues(target).Set(stddev / 1000)
-			}
-		}
-	}
+	stats := pinger.Statistics()
+	pingPacketLoss.WithLabelValues(target).Set(stats.PacketLoss)
+	pingLatencyMin.WithLabelValues(target).Set(stats.MinRtt.Seconds())
+	pingLatencyAvg.WithLabelValues(target).Set(stats.AvgRtt.Seconds())
+	pingLatencyMax.WithLabelValues(target).Set(stats.MaxRtt.Seconds())
+	pingLatencyStddev.WithLabelValues(target).Set(stats.StdDevRtt.Seconds())
 }
