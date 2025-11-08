@@ -3,6 +3,7 @@ collectors:
   pidstat: true
   iostat: true
   vmstat: true
+  diskusage: true
   benchmark: true
   ping:
     enabled: true

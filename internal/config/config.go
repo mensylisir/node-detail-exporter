@@ -13,6 +13,7 @@ type Config struct {
 		Pidstat   bool `yaml:"pidstat"`
 		Iostat    bool `yaml:"iostat"`
 		Vmstat    bool `yaml:"vmstat"`
+		DiskUsage bool `yaml:"diskusage"`
 		Benchmark bool `yaml:"benchmark"`
 		Ping      struct {
 			Enabled bool     `yaml:"enabled"`
