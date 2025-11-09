@@ -18,7 +18,7 @@ COPY . .
 
 # Build the Go application
 # The output binary will be named 'node-prober'
-RUN CGO_ENABLED=1 go build -o /node-prober .
+RUN go build -o /node-prober .
 
 # Stage 2: Create the final lightweight image
 FROM alpine:latest

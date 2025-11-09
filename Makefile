@@ -17,7 +17,7 @@ all: build
 
 build:
 	@echo "Building $(BINARY_NAME) version $(VERSION)..."
-	@$(GOBUILD) -o $(BINARY_NAME) -ldflags="-X 'main.Version=$(VERSION)' -X 'main.BuildDate=$(BUILD_DATE)'" ./cmd/node-prober
+	@$(GOBUILD) -o $(BINARY_NAME) -ldflags="-X 'main.Version=$(VERSION)' -X 'main.BuildDate=$(BUILD_DATE)'" .
 
 test:
 	@echo "Running tests..."
