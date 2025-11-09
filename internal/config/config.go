@@ -1,6 +1,8 @@
 package config
 
 import (
+	"errors"
+	"fmt"
 	"io/ioutil"
 	"time"
 
@@ -41,5 +43,41 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
+	if err := config.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid configuration: %w", err)
+	}
+
 	return &config, nil
+}
+
+func (c *Config) Validate() error {
+	if c.ScrapeInterval <= 0 {
+		return errors.New("scrape_interval must be a positive duration")
+	}
+
+	collectorsEnabled := c.Collectors.Pidstat ||
+		c.Collectors.Iostat ||
+		c.Collectors.Vmstat ||
+		c.Collectors.DiskUsage ||
+		c.Collectors.Benchmark ||
+		c.Collectors.Ping.Enabled ||
+		c.Collectors.Audit.Enabled ||
+		c.Collectors.Mtr.Enabled
+	if !collectorsEnabled {
+		return errors.New("at least one collector must be enabled")
+	}
+
+	if c.Collectors.Ping.Enabled && len(c.Collectors.Ping.Targets) == 0 {
+		return errors.New("ping collector is enabled but has no targets")
+	}
+
+	if c.Collectors.Mtr.Enabled && len(c.Collectors.Mtr.Targets) == 0 {
+		return errors.New("mtr collector is enabled but has no targets")
+	}
+
+	if c.Collectors.Audit.Enabled && c.Collectors.Audit.LogPath == "" {
+		return errors.New("audit collector is enabled but log_path is not specified")
+	}
+
+	return nil
 }

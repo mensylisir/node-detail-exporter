@@ -61,6 +61,10 @@ func NewPidstatCollector() (Collector, error) {
 	}, nil
 }
 
+func (c *PidstatCollector) Name() string {
+	return "pidstat"
+}
+
 func (c *PidstatCollector) Update(ch chan<- prometheus.Metric, interval time.Duration) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()

@@ -77,6 +77,10 @@ func NewMtrCollector(targets []string) (Collector, error) {
 	return &MtrCollector{Targets: targets}, nil
 }
 
+func (c *MtrCollector) Name() string {
+	return "mtr"
+}
+
 // Update implements the Collector interface.
 func (c *MtrCollector) Update(ch chan<- prometheus.Metric, interval time.Duration) error {
 	mtrHopLoss.Reset()

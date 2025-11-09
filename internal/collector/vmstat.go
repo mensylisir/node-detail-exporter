@@ -46,6 +46,10 @@ func NewVmstatCollector() (Collector, error) {
 	return &VmstatCollector{}, nil
 }
 
+func (c *VmstatCollector) Name() string {
+	return "vmstat"
+}
+
 func (c *VmstatCollector) Update(ch chan<- prometheus.Metric, interval time.Duration) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()

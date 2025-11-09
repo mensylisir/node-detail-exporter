@@ -13,6 +13,8 @@ type Collector interface {
 	// Update fetches the data from the source and updates the Prometheus metrics.
 	// It is called periodically in a background goroutine.
 	Update(ch chan<- prometheus.Metric, interval time.Duration) error
+	// Name returns the name of the collector.
+	Name() string
 }
 
 // Registry manages a set of collectors.

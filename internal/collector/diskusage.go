@@ -48,6 +48,10 @@ func NewDiskUsageCollector() (Collector, error) {
 }
 
 // Update implements the Collector interface.
+func (c *DiskUsageCollector) Name() string {
+	return "diskusage"
+}
+
 func (c *DiskUsageCollector) Update(ch chan<- prometheus.Metric, interval time.Duration) error {
 	diskUsageTotal.Reset()
 	diskUsageUsed.Reset()

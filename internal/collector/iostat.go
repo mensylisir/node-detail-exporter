@@ -51,6 +51,10 @@ func NewIostatCollector() (Collector, error) {
 	}, nil
 }
 
+func (c *IostatCollector) Name() string {
+	return "iostat"
+}
+
 func (c *IostatCollector) Update(ch chan<- prometheus.Metric, interval time.Duration) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()

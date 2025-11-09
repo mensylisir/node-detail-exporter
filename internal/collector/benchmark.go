@@ -45,6 +45,10 @@ func NewBenchmarkCollector() (Collector, error) {
 	return &BenchmarkCollector{}, nil
 }
 
+func (c *BenchmarkCollector) Name() string {
+	return "benchmark"
+}
+
 func (c *BenchmarkCollector) Update(ch chan<- prometheus.Metric, interval time.Duration) error {
 	c.Do(func() {
 		log.Println("Loading benchmark data...")
